@@ -84,11 +84,21 @@ public final class Partida<C extends Carta> {
     }
 
     private void avancarTurno() {
-        indiceJogadorDaVez = (indiceJogadorDaVez + 1) % jogadores.size();
+        indiceJogadorDaVez = regras.proximoIndice(this, indiceJogadorDaVez);
     }
 
     public Jogador<C> getJogadorDaVez() {
         return jogadores.get(indiceJogadorDaVez);
+    }
+
+    /**
+     * Delega para {@link RegrasDoJogo#jogadaValida} a verificação de se
+     * {@code carta} pode ser jogada agora pelo jogador da vez. Útil para uma
+     * {@link jogodecartas.framework.estrategia.EstrategiaDeJogo} decidir uma
+     * jogada sem precisar conhecer as regras concretas do jogo.
+     */
+    public boolean jogadaValida(C carta) {
+        return regras.jogadaValida(this, getJogadorDaVez(), carta);
     }
 
     public boolean isIniciada() {
@@ -112,6 +122,15 @@ public final class Partida<C extends Carta> {
 
     public Baralho<C> getBaralho() {
         return baralho;
+    }
+
+    /**
+     * @return as regras que governam esta partida — útil para uma
+     *         {@link jogodecartas.framework.estrategia.EstrategiaDeJogo} que
+     *         precise consultar estado específico do jogo concreto
+     */
+    public RegrasDoJogo<C> getRegras() {
+        return regras;
     }
 
     /**

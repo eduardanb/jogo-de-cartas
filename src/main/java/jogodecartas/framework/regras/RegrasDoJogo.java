@@ -65,4 +65,22 @@ public abstract class RegrasDoJogo<C extends Carta> {
      *         jogo concreto permitir empate
      */
     public abstract Jogador<C> apurarVencedor(Partida<C> partida);
+
+    /**
+     * Calcula o índice, em {@link Partida#getJogadores()}, do próximo
+     * jogador da vez. Chamado por {@link Partida} após cada jogada
+     * bem-sucedida que não encerre a partida.
+     *
+     * <p>Implementação padrão: avança um jogador, sempre na mesma ordem da
+     * lista — suficiente para jogos sem sentido de jogo variável nem cartas
+     * que pulam a vez. Jogos que têm esses mecanismos (ex.: Uno, com cartas
+     * Inverter e Pular) sobrescrevem este método.</p>
+     *
+     * @param partida     partida em andamento
+     * @param indiceAtual índice do jogador que acabou de jogar
+     * @return índice do próximo jogador da vez
+     */
+    public int proximoIndice(Partida<C> partida, int indiceAtual) {
+        return (indiceAtual + 1) % partida.getJogadores().size();
+    }
 }
