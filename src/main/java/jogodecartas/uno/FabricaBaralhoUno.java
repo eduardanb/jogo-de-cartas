@@ -2,7 +2,6 @@ package jogodecartas.uno;
 
 import jogodecartas.framework.baralho.Baralho;
 import jogodecartas.framework.baralho.FabricaBaralho;
-
 import java.util.ArrayList;
 import java.util.List;
 

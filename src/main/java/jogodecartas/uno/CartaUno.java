@@ -1,7 +1,6 @@
 package jogodecartas.uno;
 
 import jogodecartas.framework.carta.Carta;
-
 /**
  * Representa uma carta do jogo UNO.
  *
