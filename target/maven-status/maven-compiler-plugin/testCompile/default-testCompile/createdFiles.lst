@@ -1,0 +1,10 @@
+jogodecartas\framework\baralho\BaralhoTest.class
+jogodecartas\framework\partida\PartidaTest.class
+jogodecartas\framework\testutil\RegrasFalsas.class
+jogodecartas\framework\regras\RegrasTest$RegrasQueValidamPorPrefixo.class
+jogodecartas\framework\testutil\CartaFalsa.class
+jogodecartas\framework\partida\PartidaTest$1.class
+jogodecartas\uno\RegrasUnoTest.class
+jogodecartas\framework\regras\RegrasTest.class
+jogodecartas\uno\FabricaBaralhoUnoTest.class
+jogodecartas\uno\decorators\CartaUnoDecoratorTest.class

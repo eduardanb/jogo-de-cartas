@@ -38,6 +38,10 @@ public final class Main {
 
         Partida<CartaUno> partida = new Partida<>(List.of(humano, computador), baralho, regras);
 
+        // Registra quem vai "assistir" a partida (padrão Observer). Partida
+        // não sabe, e não precisa saber, que existe um ObservadorConsole.
+        partida.adicionarObservador(new ObservadorConsole());
+
         partida.iniciar();
 
         mostrarInicio(regras);
@@ -66,15 +70,16 @@ public final class Main {
             }
 
             try {
-                partida.jogar(escolhida); // faz uma jogada
-                mostrarJogada(jogador, escolhida, humano);
+                partida.jogar(escolhida); // faz uma jogada; ObservadorConsole cuida do print
 
             } catch (JogadaInvalidaException e) {
                 System.out.println("Jogada inválida: " + e.getMessage());
             }
         }
 
-        // Quando o loop termina, mostra o resultado da partida.
+        // Quando o loop termina sem a partida ter sido encerrada normalmente
+        // (baralho acabou), avisa o jogador — o caso de vitória normal já foi
+        // anunciado pelo ObservadorConsole via PartidaEncerradaEvento.
         mostrarResultado(partida);
 
         scanner.close();
@@ -221,30 +226,16 @@ public final class Main {
         System.out.println("Vez de: " + jogadorDaVez.getNome());
     }
 
-    private static void mostrarJogada(Jogador<CartaUno> jogador, CartaUno carta, Jogador<CartaUno> humano) {
-
-        System.out.println();
-
-        if (jogador == humano) {
-            System.out.println("Você jogou: " + carta.getDescricao());
-        } else {
-            System.out.println("Computador jogou: " + carta.getDescricao());
-        }
-
-        System.out.println("Cartas restantes: " + jogador.getMao().tamanho());
-    }
-
     private static void mostrarResultado(Partida<CartaUno> partida) {
 
-        System.out.println();
-        System.out.println("================================");
-
-        if (partida.isEncerrada()) {
-            System.out.println("Vencedor: " + partida.getVencedor().getNome());
-        } else {
+        // Se a partida terminou normalmente, o ObservadorConsole já anunciou
+        // o vencedor via PartidaEncerradaEvento. Isso só cobre o caso do
+        // baralho ter acabado antes de alguém vencer.
+        if (!partida.isEncerrada()) {
+            System.out.println();
+            System.out.println("================================");
             System.out.println("Partida encerrada sem vencedor.");
+            System.out.println("================================");
         }
-
-        System.out.println("================================");
     }
 }

@@ -1,15 +1,25 @@
 package jogodecartas.uno;
 
 import jogodecartas.framework.carta.Carta;
+import jogodecartas.framework.jogador.Jogador;
+import jogodecartas.framework.partida.Partida;
 
 /**
- * Representa uma carta do jogo UNO.
+ * Carta do jogo UNO.
  *
- * <p>O UNO não utiliza os naipes tradicionais do baralho francês.
- * Por isso, a carta define sua própria classificação por meio de
- * cores e tipos.</p>
+ * <p>É o <b>Component</b> do padrão Decorator: define o contrato comum a
+ * toda carta de UNO (cor, tipo, número, descrição) e um ponto de extensão de
+ * comportamento, {@link #aplicarEfeito}, usado pelas cartas especiais para
+ * reagir quando são jogadas (pular o próximo jogador, inverter o sentido,
+ * fazer alguém comprar cartas...).</p>
+ *
+ * <p>As implementações concretas "base" ({@link CartaNumerica},
+ * {@link CartaAcao}, {@link CartaCoringa}) não têm nenhum efeito especial
+ * por padrão. Efeitos são adicionados em tempo de execução pelos decoradores
+ * do pacote {@link jogodecartas.uno.decorators}, evitando criar uma
+ * subclasse de carta para cada combinação de cor x efeito.</p>
  */
-public class CartaUno extends Carta {
+public abstract class CartaUno extends Carta {
 
     /**
      * Cores utilizadas pelas cartas coloridas do UNO.
@@ -34,120 +44,36 @@ public class CartaUno extends Carta {
         CORINGA_COMPRAR_QUATRO
     }
 
-    private final Cor cor;
-    private final Tipo tipo;
-    private final int numero;
+    public abstract Cor getCor();
+
+    public abstract Tipo getTipo();
 
     /**
-     * Construtor para cartas numéricas.
-     *
-     * @param cor cor da carta
-     * @param numero valor numérico da carta, de 0 a 9
+     * @return valor numérico da carta, de 0 a 9; -1 para cartas não numéricas
      */
-    public CartaUno(Cor cor, int numero) {
-        if (cor == null || cor == Cor.SEM_COR) {
-            throw new IllegalArgumentException(
-                    "Carta numérica deve possuir uma cor válida."
-            );
-        }
+    public abstract int getNumero();
 
-        if (numero < 0 || numero > 9) {
-            throw new IllegalArgumentException(
-                    "O número de uma carta UNO deve estar entre 0 e 9."
-            );
-        }
-
-        this.cor = cor;
-        this.tipo = Tipo.NUMERO;
-        this.numero = numero;
-    }
-
-    /**
-     * Construtor para cartas especiais.
-     *
-     * @param cor cor da carta; cartas coringa devem utilizar SEM_COR
-     * @param tipo tipo especial da carta
-     */
-    public CartaUno(Cor cor, Tipo tipo) {
-        if (cor == null || tipo == null) {
-            throw new IllegalArgumentException(
-                    "Cor e tipo não podem ser nulos."
-            );
-        }
-
-        if (tipo == Tipo.NUMERO) {
-            throw new IllegalArgumentException(
-                    "Cartas numéricas devem utilizar o construtor específico."
-            );
-        }
-
-        if ((tipo == Tipo.CORINGA || tipo == Tipo.CORINGA_COMPRAR_QUATRO)
-                && cor != Cor.SEM_COR) {
-            throw new IllegalArgumentException(
-                    "Cartas coringa devem possuir SEM_COR."
-            );
-        }
-
-        if (tipo != Tipo.CORINGA && tipo != Tipo.CORINGA_COMPRAR_QUATRO
-                && cor == Cor.SEM_COR) {
-            throw new IllegalArgumentException(
-                    "Cartas especiais coloridas devem possuir uma cor."
-            );
-        }
-
-        this.cor = cor;
-        this.tipo = tipo;
-        this.numero = -1;
-    }
-
-    public Cor getCor() {
-        return cor;
-    }
-
-    public Tipo getTipo() {
-        return tipo;
-    }
-
-    /**
-     * Retorna o valor numérico da carta.
-     *
-     * @return valor entre 0 e 9 para cartas numéricas; -1 para cartas especiais
-     */
-    public int getNumero() {
-        return numero;
-    }
-
-    /**
-     * Verifica se esta carta é numérica.
-     */
     public boolean isNumerica() {
-        return tipo == Tipo.NUMERO;
+        return getTipo() == Tipo.NUMERO;
     }
 
-    /**
-     * Verifica se esta carta é uma carta coringa.
-     */
     public boolean isCoringa() {
-        return tipo == Tipo.CORINGA
-                || tipo == Tipo.CORINGA_COMPRAR_QUATRO;
+        return getTipo() == Tipo.CORINGA || getTipo() == Tipo.CORINGA_COMPRAR_QUATRO;
     }
 
     /**
-     * Retorna a descrição textual da carta.
+     * Efeito aplicado no momento em que esta carta é jogada (além de virar a
+     * carta da mesa, que é responsabilidade de {@code RegrasUno}).
+     *
+     * <p>Implementação padrão: nenhum efeito. Apenas as cartas decoradas com
+     * um efeito específico (ver {@link jogodecartas.uno.decorators})
+     * sobrescrevem este método — é esse despacho polimórfico que substitui
+     * os antigos condicionais {@code if (tipo == X)} em {@code RegrasUno}.</p>
+     *
+     * @param partida         partida em andamento
+     * @param jogadorDaJogada jogador que acabou de jogar esta carta
      */
-    @Override
-    public String getDescricao() {
-        if (tipo == Tipo.NUMERO) {
-            return "Carta " + numero + " " + cor;
-        }
-
-        return switch (tipo) {
-            case PULAR -> "Pular " + cor;
-            case INVERSAO -> "Inversão " + cor;
-            case COMPRAR_DOIS -> "Comprar Dois " + cor;
-            case CORINGA -> "Coringa";
-            case CORINGA_COMPRAR_QUATRO -> "Coringa Comprar Quatro";
-            case NUMERO -> "Carta " + numero + " " + cor;
-        };
+    public void aplicarEfeito(Partida<CartaUno> partida, Jogador<CartaUno> jogadorDaJogada) {
+        // sem efeito por padrão
     }
 }

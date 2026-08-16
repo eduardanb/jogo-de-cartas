@@ -4,7 +4,24 @@ import jogodecartas.framework.excecao.BaralhoVazioException;
 import jogodecartas.framework.jogador.Jogador;
 import jogodecartas.framework.partida.Partida;
 import jogodecartas.framework.regras.RegrasDoJogo;
+import jogodecartas.uno.eventos.CartaJogadaEvento;
+import jogodecartas.uno.eventos.PartidaEncerradaEvento;
 
+/**
+ * Regras concretas do UNO (padrão Template Method: implementa os passos
+ * abstratos definidos por {@link RegrasDoJogo}).
+ *
+ * <p>Também mantém o estado de sentido da partida ({@link #direcao}) e um
+ * sinalizador de turno pulado ({@link #pularProximo}), usados pelas cartas
+ * decoradas com {@code EfeitoInversao} e {@code EfeitoPular}
+ * (padrão Decorator, pacote {@link jogodecartas.uno.decorators}) para
+ * alterar a ordem dos turnos sem que {@code RegrasUno} precise saber qual
+ * carta específica foi jogada.</p>
+ *
+ * <p>Publica {@link CartaJogadaEvento} e {@link PartidaEncerradaEvento} no
+ * {@link jogodecartas.framework.evento.BarramentoDeEventos} da partida
+ * (padrão Observer), sem saber quem — se alguém — está escutando.</p>
+ */
 public final class RegrasUno extends RegrasDoJogo<CartaUno> {
 
     // Quantidade de cartas recebidas no início da partida
@@ -12,6 +29,12 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
 
     // Guarda a última carta jogada
     private CartaUno cartaDaMesa;
+
+    // Sentido da partida: 1 = horário, -1 = anti-horário. Alterado por EfeitoInversao.
+    private int direcao = 1;
+
+    // Sinaliza que o próximo jogador deve ser pulado. Ligado por EfeitoPular.
+    private boolean pularProximo = false;
 
     @Override
     public void distribuirCartas(Partida<CartaUno> partida) {
@@ -69,7 +92,6 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
 
         // Mesmo número
         if (carta.isNumerica() && cartaDaMesa.isNumerica()) {
-
             return carta.getNumero() == cartaDaMesa.getNumero();
         }
 
@@ -86,16 +108,14 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
         // A carta passa a ser a nova carta da mesa
         cartaDaMesa = carta;
 
-        // Efeito: Comprar 2
-        if (carta.getTipo() == CartaUno.Tipo.COMPRAR_DOIS) {
-            Jogador<CartaUno> proximo = buscarProximoJogador(partida, jogador);
-            comprarCartas(partida, proximo, 2);
-        }
+        // Cada carta decide, sozinha, se tem algum efeito ao ser jogada (Decorator).
+        carta.aplicarEfeito(partida, jogador);
 
-        // Efeito: Comprar 4
-        if (carta.getTipo() == CartaUno.Tipo.CORINGA_COMPRAR_QUATRO) {
-            Jogador<CartaUno> proximo = buscarProximoJogador(partida, jogador);
-            comprarCartas(partida, proximo, 4);
+        // Publica o evento para quem estiver observando a partida (Observer).
+        partida.getEventos().publicar(new CartaJogadaEvento(jogador, carta));
+
+        if (partidaEncerrada(partida)) {
+            partida.getEventos().publicar(new PartidaEncerradaEvento(apurarVencedor(partida)));
         }
     }
 
@@ -124,30 +144,28 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
         return null;
     }
 
-    // Encontra o próximo jogador da partida
-    private Jogador<CartaUno> buscarProximoJogador(Partida<CartaUno> partida, Jogador<CartaUno> jogadorAtual) {
-
-        int indice = partida.getJogadores().indexOf(jogadorAtual); // descobre a posição do jogador atual
-
-        int proximoIndice = (indice + 1) % partida.getJogadores().size();
-
-        return partida.getJogadores().get(proximoIndice);
+    /**
+     * Sobrescreve o cálculo padrão de "próximo jogador" ({@link RegrasDoJogo#proximoIndice})
+     * para levar em conta o sentido da partida e um possível pulo de turno,
+     * ambos sinalizados pelas cartas especiais via {@link #inverterSentido()}
+     * e {@link #pularProximoJogador()}.
+     */
+    @Override
+    public int proximoIndice(Partida<CartaUno> partida, int indiceAtual) {
+        int quantidadeJogadores = partida.getJogadores().size();
+        int passo = pularProximo ? 2 : 1;
+        pularProximo = false;
+        return Math.floorMod(indiceAtual + direcao * passo, quantidadeJogadores);
     }
 
-    // Faz um jogador comprar a quantidade informada
-    private void comprarCartas(Partida<CartaUno> partida, Jogador<CartaUno> jogador, int quantidade) {
+    /** Chamado por {@code EfeitoInversao} quando uma carta de Inversão é jogada. */
+    public void inverterSentido() {
+        direcao = -direcao;
+    }
 
-        // tenta comprar a quantidade recebida
-        for (int i = 0; i < quantidade; i++) {
-
-            try {
-                CartaUno carta = partida.getBaralho().comprar(); // comprar uma carta
-                jogador.getMao().adicionar(carta); // coloca na mão
-
-            } catch (BaralhoVazioException e) { // se as catas acabar durante o processo, vai ser interrompido
-                break;
-            }
-        }
+    /** Chamado por {@code EfeitoPular} quando uma carta de Pular é jogada. */
+    public void pularProximoJogador() {
+        pularProximo = true;
     }
 
     public CartaUno getCartaDaMesa() {
