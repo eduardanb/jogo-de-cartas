@@ -30,6 +30,11 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
     // Guarda a última carta jogada
     private CartaUno cartaDaMesa;
 
+    // Cor que efetivamente vale agora: a cor da carta da mesa, ou -- se ela
+    // for um coringa (sem cor própria) -- a cor escolhida por quem a jogou.
+    // Ver #escolherCorDoJogador.
+    private CartaUno.Cor corVigente;
+
     // Sentido da partida: 1 = horário, -1 = anti-horário. Alterado por EfeitoInversao.
     private int direcao = 1;
 
@@ -53,6 +58,11 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
 
             // Coloca uma carta inicial na mesa
             cartaDaMesa = partida.getBaralho().comprar();
+
+            // Se a carta inicial calhar de ser um coringa (sem cor própria),
+            // usa uma cor padrão em vez de deixar corVigente nulo -- ninguém
+            // jogou o coringa pra poder escolher uma.
+            corVigente = cartaDaMesa.isCoringa() ? CartaUno.Cor.VERMELHO : cartaDaMesa.getCor();
 
         } catch (BaralhoVazioException e) {
             throw new IllegalStateException("Não há cartas suficientes para iniciar a partida.", e);
@@ -80,13 +90,9 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
             return true;
         }
 
-        // Depois de um coringa, qualquer carta pode ser jogada
-        if (cartaDaMesa.isCoringa()) {
-            return true;
-        }
-
-        // Mesma cor
-        if (carta.getCor() == cartaDaMesa.getCor()) {
+        // Cor vigente: a cor da carta da mesa, ou -- se a carta da mesa for
+        // um coringa -- a cor escolhida por quem o jogou.
+        if (carta.getCor() == corVigente) {
             return true;
         }
 
@@ -108,11 +114,18 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
         // A carta passa a ser a nova carta da mesa
         cartaDaMesa = carta;
 
+        // Cor vigente: a própria cor da carta, ou -- se for um coringa, que
+        // não tem cor própria -- a cor escolhida por quem jogou (Strategy).
+        corVigente = carta.isCoringa() ? escolherCorDoJogador(jogador, partida) : carta.getCor();
+
+        // Publica o evento da jogada em si ANTES do efeito da carta: os
+        // decoradores de efeito (EfeitoPular, EfeitoInversao, ...) também
+        // publicam eventos, e a ordem de publicação é a ordem de exibição no
+        // console -- narrar "jogou X" antes de qualquer consequência de X.
+        partida.getEventos().publicar(new CartaJogadaEvento(jogador, carta));
+
         // Cada carta decide, sozinha, se tem algum efeito ao ser jogada (Decorator).
         carta.aplicarEfeito(partida, jogador);
-
-        // Publica o evento para quem estiver observando a partida (Observer).
-        partida.getEventos().publicar(new CartaJogadaEvento(jogador, carta));
 
         if (partidaEncerrada(partida)) {
             partida.getEventos().publicar(new PartidaEncerradaEvento(apurarVencedor(partida)));
@@ -170,5 +183,21 @@ public final class RegrasUno extends RegrasDoJogo<CartaUno> {
 
     public CartaUno getCartaDaMesa() {
         return cartaDaMesa;
+    }
+
+    public CartaUno.Cor getCorVigente() {
+        return corVigente;
+    }
+
+    /**
+     * Pede ao jogador (via {@link EstrategiaUno#escolherCor}) a cor a valer
+     * depois de um coringa. Se a estratégia dele não implementar
+     * {@link EstrategiaUno}, usa uma cor padrão em vez de travar o jogo.
+     */
+    private CartaUno.Cor escolherCorDoJogador(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+        if (jogador.getEstrategia() instanceof EstrategiaUno estrategiaUno) {
+            return estrategiaUno.escolherCor(jogador, partida);
+        }
+        return CartaUno.Cor.VERMELHO;
     }
 }

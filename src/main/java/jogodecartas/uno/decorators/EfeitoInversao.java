@@ -4,6 +4,8 @@ import jogodecartas.framework.jogador.Jogador;
 import jogodecartas.framework.partida.Partida;
 import jogodecartas.uno.CartaUno;
 import jogodecartas.uno.RegrasUno;
+import jogodecartas.uno.eventos.JogadorPulouVezEvento;
+import jogodecartas.uno.eventos.SentidoInvertidoEvento;
 
 /**
  * Decora uma {@link jogodecartas.uno.CartaAcao} dando a ela o efeito
@@ -35,8 +37,12 @@ public final class EfeitoInversao extends CartaUnoDecorator {
         if (partida.getRegras() instanceof RegrasUno regrasUno) {
             if (partida.getJogadores().size() == 2) {
                 regrasUno.pularProximoJogador();
+
+                Jogador<CartaUno> pulado = EfeitosUnoUtil.proximoJogador(partida, jogadorDaJogada);
+                partida.getEventos().publicar(new JogadorPulouVezEvento(pulado));
             } else {
                 regrasUno.inverterSentido();
+                partida.getEventos().publicar(new SentidoInvertidoEvento());
             }
         }
     }

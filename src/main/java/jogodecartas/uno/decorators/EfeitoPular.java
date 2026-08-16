@@ -4,6 +4,7 @@ import jogodecartas.framework.jogador.Jogador;
 import jogodecartas.framework.partida.Partida;
 import jogodecartas.uno.CartaUno;
 import jogodecartas.uno.RegrasUno;
+import jogodecartas.uno.eventos.JogadorPulouVezEvento;
 
 /**
  * Decora uma {@link jogodecartas.uno.CartaAcao} dando a ela o efeito
@@ -29,6 +30,9 @@ public final class EfeitoPular extends CartaUnoDecorator {
     public void aplicarEfeito(Partida<CartaUno> partida, Jogador<CartaUno> jogadorDaJogada) {
         if (partida.getRegras() instanceof RegrasUno regrasUno) {
             regrasUno.pularProximoJogador();
+
+            Jogador<CartaUno> pulado = EfeitosUnoUtil.proximoJogador(partida, jogadorDaJogada);
+            partida.getEventos().publicar(new JogadorPulouVezEvento(pulado));
         }
     }
 }

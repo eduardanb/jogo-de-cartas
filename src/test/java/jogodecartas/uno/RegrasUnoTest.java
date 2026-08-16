@@ -10,7 +10,10 @@ import jogodecartas.uno.decorators.EfeitoComprarQuatro;
 import jogodecartas.uno.decorators.EfeitoInversao;
 import jogodecartas.uno.decorators.EfeitoPular;
 import jogodecartas.uno.eventos.CartaJogadaEvento;
+import jogodecartas.uno.eventos.CompraForcadaEvento;
+import jogodecartas.uno.eventos.JogadorPulouVezEvento;
 import jogodecartas.uno.eventos.PartidaEncerradaEvento;
+import jogodecartas.uno.eventos.SentidoInvertidoEvento;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -34,6 +37,22 @@ class RegrasUnoTest {
 
     private Jogador<CartaUno> novoJogador(String nome) {
         return new Jogador<>(nome, (jogador, partida) -> null);
+    }
+
+    /** Jogador cuja estratégia sempre escolhe {@code corEscolhida} ao jogar um coringa. */
+    private Jogador<CartaUno> novoJogadorComCor(String nome, CartaUno.Cor corEscolhida) {
+        EstrategiaUno estrategia = new EstrategiaUno() {
+            @Override
+            public CartaUno escolherCarta(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+                return null;
+            }
+
+            @Override
+            public CartaUno.Cor escolherCor(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+                return corEscolhida;
+            }
+        };
+        return new Jogador<>(nome, estrategia);
     }
 
     @Test
@@ -89,12 +108,40 @@ class RegrasUnoTest {
     }
 
     @Test
-    void jogarCartaComprarDoisDeveFazerOProximoJogadorComprarDuasCartas() throws JogadaInvalidaException {
+    void jogarCoringaDeveTravarNaCorEscolhidaPelaEstrategiaDeQuemJogou() throws JogadaInvalidaException {
+        RegrasUno regras = new RegrasUno();
+        Jogador<CartaUno> ana = novoJogadorComCor("Ana", CartaUno.Cor.AZUL);
+        Jogador<CartaUno> bia = novoJogador("Bia");
+        Partida<CartaUno> partida = novaPartidaIniciada(regras, ana, bia); // cartas iniciais vermelhas
+
+        CartaUno coringa = new CartaCoringa();
+        ana.getMao().adicionar(coringa);
+
+        partida.jogar(coringa);
+
+        assertSame(CartaUno.Cor.AZUL, regras.getCorVigente());
+
+        CartaUno cartaAzul = new CartaNumerica(CartaUno.Cor.AZUL, 5);
+        CartaUno cartaVerde = new CartaNumerica(CartaUno.Cor.VERDE, 5);
+        bia.getMao().adicionar(cartaAzul);
+        bia.getMao().adicionar(cartaVerde);
+
+        // Só a cor escolhida (AZUL) deve valer -- não é mais "qualquer carta",
+        // como acontecia antes do coringa passar a travar numa cor.
+        assertTrue(regras.jogadaValida(partida, bia, cartaAzul));
+        assertFalse(regras.jogadaValida(partida, bia, cartaVerde));
+    }
+
+    @Test
+    void jogarCartaComprarDoisDeveFazerOProximoJogadorComprarDuasCartasEPerderAVez() throws JogadaInvalidaException {
         RegrasUno regras = new RegrasUno();
         Jogador<CartaUno> ana = novoJogador("Ana");
         Jogador<CartaUno> bia = novoJogador("Bia");
         Partida<CartaUno> partida = novaPartidaIniciada(regras, ana, bia);
         int cartasDeBiaAntes = bia.getMao().tamanho();
+
+        List<EventoDoJogo> recebidos = new ArrayList<>();
+        partida.adicionarObservador(recebidos::add);
 
         CartaUno comprarDois = new EfeitoComprarDois(new CartaAcao(CartaUno.Cor.VERMELHO));
         ana.getMao().adicionar(comprarDois);
@@ -102,10 +149,23 @@ class RegrasUnoTest {
         partida.jogar(comprarDois);
 
         assertEquals(cartasDeBiaAntes + 2, bia.getMao().tamanho());
+        // Bia foi forçada a comprar: com 2 jogadores, ela também perde a vez,
+        // e o turno volta pra Ana.
+        assertSame(ana, partida.getJogadorDaVez());
+
+        // A ordem publicada é a ordem em que o console narra: primeiro a
+        // jogada em si, depois as consequências dela.
+        assertEquals(3, recebidos.size());
+        assertInstanceOf(CartaJogadaEvento.class, recebidos.get(0));
+        assertInstanceOf(CompraForcadaEvento.class, recebidos.get(1));
+        assertSame(bia, ((CompraForcadaEvento) recebidos.get(1)).getJogador());
+        assertEquals(2, ((CompraForcadaEvento) recebidos.get(1)).getQuantidade());
+        assertInstanceOf(JogadorPulouVezEvento.class, recebidos.get(2));
+        assertSame(bia, ((JogadorPulouVezEvento) recebidos.get(2)).getJogador());
     }
 
     @Test
-    void jogarCoringaComprarQuatroDeveFazerOProximoJogadorComprarQuatroCartas() throws JogadaInvalidaException {
+    void jogarCoringaComprarQuatroDeveFazerOProximoJogadorComprarQuatroCartasEPerderAVez() throws JogadaInvalidaException {
         RegrasUno regras = new RegrasUno();
         Jogador<CartaUno> ana = novoJogador("Ana");
         Jogador<CartaUno> bia = novoJogador("Bia");
@@ -118,6 +178,7 @@ class RegrasUnoTest {
         partida.jogar(comprarQuatro);
 
         assertEquals(cartasDeBiaAntes + 4, bia.getMao().tamanho());
+        assertSame(ana, partida.getJogadorDaVez());
     }
 
     @Test
@@ -128,6 +189,9 @@ class RegrasUnoTest {
         Partida<CartaUno> partida = novaPartidaIniciada(regras, ana, bia);
         assertSame(ana, partida.getJogadorDaVez());
 
+        List<EventoDoJogo> recebidos = new ArrayList<>();
+        partida.adicionarObservador(recebidos::add);
+
         CartaUno pular = new EfeitoPular(new CartaAcao(CartaUno.Cor.VERMELHO));
         ana.getMao().adicionar(pular);
 
@@ -135,6 +199,11 @@ class RegrasUnoTest {
 
         // Com 2 jogadores, pular a vez de Bia devolve o turno pra quem jogou.
         assertSame(ana, partida.getJogadorDaVez());
+
+        assertEquals(2, recebidos.size());
+        assertInstanceOf(CartaJogadaEvento.class, recebidos.get(0));
+        assertInstanceOf(JogadorPulouVezEvento.class, recebidos.get(1));
+        assertSame(bia, ((JogadorPulouVezEvento) recebidos.get(1)).getJogador());
     }
 
     @Test
@@ -144,12 +213,47 @@ class RegrasUnoTest {
         Jogador<CartaUno> bia = novoJogador("Bia");
         Partida<CartaUno> partida = novaPartidaIniciada(regras, ana, bia);
 
+        List<EventoDoJogo> recebidos = new ArrayList<>();
+        partida.adicionarObservador(recebidos::add);
+
         CartaUno inversao = new EfeitoInversao(new CartaAcao(CartaUno.Cor.VERMELHO));
         ana.getMao().adicionar(inversao);
 
         partida.jogar(inversao);
 
         assertSame(ana, partida.getJogadorDaVez());
+        assertTrue(recebidos.stream().anyMatch(JogadorPulouVezEvento.class::isInstance));
+        assertTrue(recebidos.stream().noneMatch(SentidoInvertidoEvento.class::isInstance));
+    }
+
+    @Test
+    void jogarCartaInversaoComTresJogadoresDeveInverterOSentido() throws JogadaInvalidaException {
+        RegrasUno regras = new RegrasUno();
+        Jogador<CartaUno> ana = novoJogador("Ana");
+        Jogador<CartaUno> bia = novoJogador("Bia");
+        Jogador<CartaUno> caio = novoJogador("Caio");
+
+        List<CartaUno> cartasIniciais = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            cartasIniciais.add(new CartaNumerica(CartaUno.Cor.VERMELHO, i % 10));
+        }
+        Baralho<CartaUno> baralho = new Baralho<>(cartasIniciais);
+        Partida<CartaUno> partida = new Partida<>(List.of(ana, bia, caio), baralho, regras);
+        partida.iniciar();
+
+        List<EventoDoJogo> recebidos = new ArrayList<>();
+        partida.adicionarObservador(recebidos::add);
+
+        CartaUno inversao = new EfeitoInversao(new CartaAcao(CartaUno.Cor.VERMELHO));
+        ana.getMao().adicionar(inversao);
+
+        partida.jogar(inversao);
+
+        // Sentido invertido: em vez de ir pra Bia (próxima na lista), o
+        // turno vai pra Caio (o anterior a Ana, no sentido inverso).
+        assertSame(caio, partida.getJogadorDaVez());
+        assertTrue(recebidos.stream().anyMatch(SentidoInvertidoEvento.class::isInstance));
+        assertTrue(recebidos.stream().noneMatch(JogadorPulouVezEvento.class::isInstance));
     }
 
     @Test

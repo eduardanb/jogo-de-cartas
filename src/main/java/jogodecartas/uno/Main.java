@@ -1,19 +1,22 @@
 package jogodecartas.uno;
 
 import jogodecartas.framework.baralho.Baralho;
-import jogodecartas.framework.estrategia.EstrategiaDeJogo;
 import jogodecartas.framework.excecao.BaralhoVazioException;
 import jogodecartas.framework.excecao.JogadaInvalidaException;
 import jogodecartas.framework.jogador.Jogador;
 import jogodecartas.framework.partida.Partida;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Scanner;
+import java.util.Set;
 
 public final class Main {
 
     private static final String LINHA = "--------------------------------";
+    private static final int MINIMO_JOGADORES = 2;
+    private static final int MAXIMO_JOGADORES = 4;
 
     private Main() {}
 
@@ -21,22 +24,35 @@ public final class Main {
 
         Scanner scanner = new Scanner(System.in);
 
+        System.out.println();
+        System.out.println("================================");
+        System.out.println("              UNO");
+        System.out.println("================================");
+
+        // Cria as regras (compartilhada por todas as estratégias, que
+        // precisam dela pra saber se uma carta é jogável agora)
+        RegrasUno regras = new RegrasUno();
+
+        // Menu inicial: quantidade de jogadores, humano ou bot cada um, e
+        // confirmação antes de embaralhar/distribuir as cartas.
+        ConfiguracaoJogadores configuracao = lerJogadores(scanner, regras);
+        List<Jogador<CartaUno>> jogadores = configuracao.jogadores();
+
+        // Com só um humano na mesa, não tem "oponente" que possa espiar --
+        // então dá pra mostrar a mão dos bots pra ele acompanhar o jogo.
+        boolean revelarMaosDosBots = (jogadores.size() - configuracao.bots().size()) == 1;
+
+        if (!confirmarInicio(scanner)) {
+            System.out.println("\nPartida cancelada.");
+            scanner.close();
+            return;
+        }
+
         // Cria o baralho
         FabricaBaralhoUno fabrica = new FabricaBaralhoUno();
         Baralho<CartaUno> baralho = fabrica.criarBaralho();
 
-        // Cria as regras
-        RegrasUno regras = new RegrasUno();
-
-        // Estratégia do jogador humano
-        EstrategiaDeJogo<CartaUno> estrategiaHumana = (jogador, partida) -> escolherCartaHumano(jogador, partida, regras, scanner);
-        // Estratégia do computador
-        EstrategiaDeJogo<CartaUno> estrategiaComputador = (jogador, partida) -> escolherCartaComputador(jogador, partida, regras);
-
-        Jogador<CartaUno> humano = new Jogador<>("Você", estrategiaHumana);
-        Jogador<CartaUno> computador = new Jogador<>("Computador", estrategiaComputador);
-
-        Partida<CartaUno> partida = new Partida<>(List.of(humano, computador), baralho, regras);
+        Partida<CartaUno> partida = new Partida<>(jogadores, baralho, regras);
 
         // Registra quem vai "assistir" a partida (padrão Observer). Partida
         // não sabe, e não precisa saber, que existe um ObservadorConsole.
@@ -51,14 +67,14 @@ public final class Main {
             // controlando de quem é a vez
             Jogador<CartaUno> jogador = partida.getJogadorDaVez();
 
-            mostrarEstado(regras, humano, computador, jogador);
+            mostrarEstado(regras, jogadores, configuracao.bots(), revelarMaosDosBots, jogador);
 
-            // define a carta escolhida pelo humano e pelo computador
+            // define a carta escolhida por quem estiver na vez (humano ou bot)
             CartaUno escolhida = jogador.getEstrategia().escolherCarta(jogador, partida);
 
             // Se não tiver uma jogada válida, compra cartas
             if (escolhida == null) {
-                escolhida = comprarAteEncontrarJogada(partida, jogador, regras, jogador == humano);
+                escolhida = comprarAteEncontrarJogada(partida, jogador, regras);
             }
 
             // Pode acontecer se o baralho terminar
@@ -85,6 +101,102 @@ public final class Main {
         scanner.close();
     }
 
+    /** Jogadores configurados no menu, e quais deles são bots (usado pra decidir se mostra a mão deles). */
+    private record ConfiguracaoJogadores(List<Jogador<CartaUno>> jogadores, Set<Jogador<CartaUno>> bots) {}
+
+    private static ConfiguracaoJogadores lerJogadores(Scanner scanner, RegrasUno regras) {
+
+        int quantidade = lerQuantidadeJogadores(scanner);
+        List<Jogador<CartaUno>> jogadores = new ArrayList<>();
+        Set<Jogador<CartaUno>> bots = new HashSet<>();
+
+        for (int i = 1; i <= quantidade; i++) {
+
+            System.out.print("\nJogador " + i + " é humano? (s/n): ");
+            String resposta = scanner.nextLine().trim().toLowerCase();
+
+            if (resposta.startsWith("s")) {
+
+                System.out.print("Nome do jogador " + i + ": ");
+                String nome = scanner.nextLine().trim();
+
+                jogadores.add(new Jogador<>(
+                        nome.isEmpty() ? "Jogador " + i : nome,
+                        criarEstrategiaHumana(regras, scanner)));
+
+            } else {
+                Jogador<CartaUno> bot = new Jogador<>("Bot " + i, criarEstrategiaComputador(regras));
+                jogadores.add(bot);
+                bots.add(bot);
+            }
+        }
+
+        return new ConfiguracaoJogadores(jogadores, bots);
+    }
+
+    private static int lerQuantidadeJogadores(Scanner scanner) {
+
+        while (true) {
+
+            System.out.print("Quantos jogadores (" + MINIMO_JOGADORES + " a " + MAXIMO_JOGADORES + ")? ");
+            String entrada = scanner.nextLine();
+
+            try {
+
+                int quantidade = Integer.parseInt(entrada);
+
+                if (quantidade >= MINIMO_JOGADORES && quantidade <= MAXIMO_JOGADORES) {
+                    return quantidade;
+                }
+
+            } catch (NumberFormatException ignored) {}
+
+            System.out.println("Valor inválido. Digite um número entre "
+                    + MINIMO_JOGADORES + " e " + MAXIMO_JOGADORES + ".");
+        }
+    }
+
+    private static boolean confirmarInicio(Scanner scanner) {
+
+        System.out.print("\nTudo pronto. Iniciar a partida? (s/n): ");
+        String resposta = scanner.nextLine().trim().toLowerCase();
+
+        return resposta.startsWith("s");
+    }
+
+    // Estratégia de um jogador humano. É uma classe anônima, e não uma
+    // lambda, porque EstrategiaUno tem dois métodos abstratos (escolherCarta
+    // e escolherCor) -- lambdas só servem pra interfaces funcionais, de um
+    // método só.
+    private static EstrategiaUno criarEstrategiaHumana(RegrasUno regras, Scanner scanner) {
+        return new EstrategiaUno() {
+            @Override
+            public CartaUno escolherCarta(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+                return escolherCartaHumano(jogador, partida, regras, scanner);
+            }
+
+            @Override
+            public CartaUno.Cor escolherCor(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+                return escolherCorHumano(jogador, scanner);
+            }
+        };
+    }
+
+    // Estratégia de um jogador automatizado (bot).
+    private static EstrategiaUno criarEstrategiaComputador(RegrasUno regras) {
+        return new EstrategiaUno() {
+            @Override
+            public CartaUno escolherCarta(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+                return escolherCartaComputador(jogador, partida, regras);
+            }
+
+            @Override
+            public CartaUno.Cor escolherCor(Jogador<CartaUno> jogador, Partida<CartaUno> partida) {
+                return escolherCorComputador(jogador);
+            }
+        };
+    }
+
     private static CartaUno escolherCartaHumano(Jogador<CartaUno> jogador, Partida<CartaUno> partida, RegrasUno regras, Scanner scanner) {
 
         List<CartaUno> cartasDaMao = jogador.getMao().getCartas();
@@ -92,7 +204,7 @@ public final class Main {
         List<CartaUno> cartasValidas = new ArrayList<>();
 
         System.out.println();
-        System.out.println("Sua mão:");
+        System.out.println("Mão de " + jogador.getNome() + ":");
 
         // Mostra todas as cartas da mão
         for (CartaUno carta : cartasDaMao) {
@@ -107,13 +219,13 @@ public final class Main {
         if (cartasValidas.isEmpty()) {
 
             System.out.println();
-            System.out.println("Nenhuma carta da sua mão pode ser jogada.");
+            System.out.println("Nenhuma carta da mão pode ser jogada.");
 
             return null; // o fluxo interpreta esse null como: precisa comprar cartas
         }
 
         System.out.println();
-        System.out.println("Cartas que você pode jogar:");
+        System.out.println("Cartas que " + jogador.getNome() + " pode jogar:");
 
         // Somente as cartas válidas recebem número
         for (int i = 0; i < cartasValidas.size(); i++) {
@@ -152,15 +264,65 @@ public final class Main {
         return null;
     }
 
-    private static CartaUno comprarAteEncontrarJogada(Partida<CartaUno> partida, Jogador<CartaUno> jogador, RegrasUno regras, boolean jogadorHumano) {
+    private static CartaUno.Cor escolherCorHumano(Jogador<CartaUno> jogador, Scanner scanner) {
+
+        CartaUno.Cor[] cores = { CartaUno.Cor.VERMELHO, CartaUno.Cor.AMARELO, CartaUno.Cor.VERDE, CartaUno.Cor.AZUL };
 
         System.out.println();
+        System.out.println(jogador.getNome() + ", escolha a nova cor:");
 
-        if (jogadorHumano) {
-            System.out.println("Comprando até encontrar uma carta válida...");
-        } else {
-            System.out.println("Computador não possui jogada válida e vai comprar.");
+        for (int i = 0; i < cores.length; i++) {
+            System.out.println("[" + (i + 1) + "] " + cores[i]);
         }
+
+        while (true) {
+
+            System.out.print("\nEscolha uma cor: ");
+
+            String entrada = scanner.nextLine();
+
+            try {
+
+                int opcao = Integer.parseInt(entrada);
+
+                if (opcao >= 1 && opcao <= cores.length) {
+                    return cores[opcao - 1];
+                }
+
+            } catch (NumberFormatException ignored) {}
+
+            System.out.println("Opção inválida. Digite um dos números acima.");
+        }
+    }
+
+    private static CartaUno.Cor escolherCorComputador(Jogador<CartaUno> jogador) {
+
+        // Escolhe a cor mais frequente na própria mão, pra maximizar a
+        // chance de conseguir jogar de novo no próximo turno.
+        CartaUno.Cor[] cores = { CartaUno.Cor.VERMELHO, CartaUno.Cor.AMARELO, CartaUno.Cor.VERDE, CartaUno.Cor.AZUL };
+        int[] contagem = new int[cores.length];
+
+        for (CartaUno carta : jogador.getMao().getCartas()) {
+            for (int i = 0; i < cores.length; i++) {
+                if (carta.getCor() == cores[i]) {
+                    contagem[i]++;
+                }
+            }
+        }
+
+        int indiceMaisFrequente = 0;
+        for (int i = 1; i < cores.length; i++) {
+            if (contagem[i] > contagem[indiceMaisFrequente]) {
+                indiceMaisFrequente = i;
+            }
+        }
+
+        return cores[indiceMaisFrequente];
+    }
+
+    private static CartaUno comprarAteEncontrarJogada(Partida<CartaUno> partida, Jogador<CartaUno> jogador, RegrasUno regras) {
+
+        Narrador.anunciar(jogador.getNome() + " não possui jogada válida e vai comprar.");
 
         // qunto tiver cartas no baralho
         while (!partida.getBaralho().estaVazio()) {
@@ -171,18 +333,10 @@ public final class Main {
                 return null;
             }
 
-            if (jogadorHumano) {
-                System.out.println("Você comprou: " + comprada.getDescricao());
-            } else {
-                System.out.println("Computador comprou uma carta.");
-            }
+            Narrador.anunciarEfeito(jogador.getNome() + " comprou: " + comprada.getDescricao());
 
             // Se a carta é jogável
             if (regras.jogadaValida(partida, jogador, comprada)) {
-                if (jogadorHumano) {
-                    System.out.println("Essa carta pode ser jogada.");
-                }
-
                 return comprada;
             }
         }
@@ -207,23 +361,61 @@ public final class Main {
         System.out.println();
         System.out.println("================================");
 
-        System.out.println("              UNO");
+        System.out.println("         Partida iniciada");
 
         System.out.println("================================");
 
         System.out.println("Carta inicial: " + regras.getCartaDaMesa().getDescricao());
+        System.out.println("Cor vigente: " + regras.getCorVigente());
     }
 
-    private static void mostrarEstado(RegrasUno regras, Jogador<CartaUno> humano, Jogador<CartaUno> computador, Jogador<CartaUno> jogadorDaVez) {
+    private static void mostrarEstado(RegrasUno regras, List<Jogador<CartaUno>> jogadores, Set<Jogador<CartaUno>> bots,
+                                       boolean revelarMaosDosBots, Jogador<CartaUno> jogadorDaVez) {
 
         System.out.println();
         System.out.println(LINHA);
 
         System.out.println("Carta da mesa: " + regras.getCartaDaMesa().getDescricao());
+        System.out.println("Cor vigente: " + regras.getCorVigente());
 
-        System.out.println("Você: " + humano.getMao().tamanho() + " cartas | Computador: " + computador.getMao().tamanho() + " cartas");
+        StringBuilder placar = new StringBuilder();
+        for (int i = 0; i < jogadores.size(); i++) {
+
+            if (i > 0) {
+                placar.append(" | ");
+            }
+
+            Jogador<CartaUno> jogador = jogadores.get(i);
+            placar.append(jogador.getNome()).append(": ").append(jogador.getMao().tamanho()).append(" cartas");
+        }
+        System.out.println(placar);
+
+        if (revelarMaosDosBots) {
+            for (Jogador<CartaUno> jogador : jogadores) {
+                if (bots.contains(jogador)) {
+                    System.out.println("Mão de " + jogador.getNome() + ": " + descricaoMao(jogador));
+                }
+            }
+        }
 
         System.out.println("Vez de: " + jogadorDaVez.getNome());
+    }
+
+    private static String descricaoMao(Jogador<CartaUno> jogador) {
+
+        List<CartaUno> cartas = jogador.getMao().getCartas();
+        StringBuilder descricao = new StringBuilder();
+
+        for (int i = 0; i < cartas.size(); i++) {
+
+            if (i > 0) {
+                descricao.append(", ");
+            }
+
+            descricao.append(cartas.get(i).getDescricao());
+        }
+
+        return descricao.toString();
     }
 
     private static void mostrarResultado(Partida<CartaUno> partida) {
